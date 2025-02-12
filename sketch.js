@@ -58,7 +58,7 @@ function gotFaces(results, error) {
   faces = results;
 
   
-  let camSize = 150; 
+  let camSize = 140; 
  
 
   
