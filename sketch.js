@@ -1,84 +1,96 @@
-let faceMesh;
-let video;
-let faces = [];
-let camImg; 
+let camImg;
+let eyeSize = 70; // Initial eye image size
+let handsfree;
+let traceImages = []; // Array to store trace images
 
 function preload() {
- 
-  let options = { maxFaces: 1, refineLandmarks: false, flipped: true };
-  faceMesh = ml5.faceMesh(options);
-
-
-  camImg = loadImage('thecam.png');
+  camImg = loadImage('thecam.png'); // Load eye image
 }
 
 function setup() {
- let cnv = createCanvas(640, 480);
-  cnv.position(200, 100);
-  cnv.style("z-index", 2);
- 
+  let canvas = createCanvas(880, 660);
+  canvas.position(windowWidth / 2 - width / 2, windowHeight / 2 - height / 2); // Center the canvas
+  
+  handsfree = new Handsfree({
+    showDebug: false, // Hide debug information
+    facemesh: true
+  });
 
+  handsfree.start(); // Start tracking
   
-
-  
-  
-  
-  video = createCapture(VIDEO);
-  video.size(640, 480); 
-  video.position(200, 100);
-  video.hide();
-  
-
-
+  // Simple solution: Hide the video element after handsfree starts
+  handsfree.on('modelReady', () => {
+    console.log("Handsfree.js is ready!");
+    // Hide the video element that Handsfree creates
+    const video = document.querySelector('.handsfree-video');
+    if (video) video.style.display = 'none';
+  });
 }
+
 function draw() {
-
-
-  strokeWeight(4);
-  stroke(210, 43, 43);
+  // Clear canvas to avoid drawing previous frames
+  clear();
   
-  tint(255, 0, 0, 0); 
-  
-  let videoX = (width - video.width) / 2;
-  let videoY = (height - video.height) / 2;
-
-  // scale(1, -1);
-  image(video, videoX, videoY);
-  
-  
-  faceMesh.detect(video, gotFaces);
+  if (handsfree.data && handsfree.data.facemesh) {
+    drawTrace();
+    drawFaceLandmarks();
+  } else {
+    fill(255, 0, 0);
+  }
 }
 
+function drawFaceLandmarks() {
+  if (handsfree.data.facemesh.multiFaceLandmarks.length > 0) {
+    let face = handsfree.data.facemesh.multiFaceLandmarks[0]; // First detected face
 
-function gotFaces(results, error) {
-  if (error) {
-    console.error(error);
-    return;
-  }
-  faces = results;
+    if (face) {
+      let leftUpper = face[159];  
+      let leftLower = face[145];  
+      let rightUpper = face[386]; 
+      let rightLower = face[374]; 
 
-  
-  let camSize = 140; 
- 
+      // Calculate eye openness (distance between the upper and lower eyelids)
+      let leftEyeOpen = dist(leftUpper.x, leftUpper.y, leftLower.x, leftLower.y);
+      let rightEyeOpen = dist(rightUpper.x, rightUpper.y, rightLower.x, rightLower.y);
+      let eyeOpenAvg = (leftEyeOpen + rightEyeOpen) / 2;
 
-  
-  tint(255, 0 , 0); 
+      
+      eyeSize = map(eyeOpenAvg, 0.01, 0.1, 20, 800); // Larger range for more dramatic scaling
+      eyeSize = constrain(eyeSize, 20, 800); // Constrain the eye size between 50px and 300px
 
-  for (let i = 0; i < faces.length; i++) {
-    let face = faces[i];
-    
-    if (face.leftEye) {
-      let eye = face.leftEye;
-      image(camImg, eye.x - camSize / 2, eye.y - camSize / 2, camSize, camSize);
+      // Get eye center positions
+      let leftEyeCenter = face[263];
+      let rightEyeCenter = face[33];
+
+      let leftX = map(leftEyeCenter.x, 0, 1, width, 0);
+      let leftY = map(leftEyeCenter.y, 0, 1, 0, height);
+      let rightX = map(rightEyeCenter.x, 0, 1, width, 0);
+      let rightY = map(rightEyeCenter.y, 0, 1, 0, height);
+
+      // Apply red tint to the images
+      tint(255, 0, 0);
+
+      // Draw the eye images at the detected eye centers with dynamic size
+      image(camImg, leftX - eyeSize / 2, leftY - eyeSize / 2, eyeSize, eyeSize);
+      image(camImg, rightX - eyeSize / 2, rightY - eyeSize / 2, eyeSize, eyeSize);
+
+      // Add current eye positions and sizes to trace images
+      traceImages.push({x: leftX, y: leftY, size: eyeSize});
+      traceImages.push({x: rightX, y: rightY, size: eyeSize});
+
+      // Limit the number of trace images to control the trail length
+      if (traceImages.length > 10) {
+        traceImages.splice(0, 2);
+      }
     }
-    if (face.rightEye) {
-      let eye = face.rightEye;
-      image(camImg, eye.x - camSize / 2, eye.y - camSize / 2, camSize, camSize);
-    }
   }
-  
-  
-  noTint();
 }
 
-
+function drawTrace() {
+  for (let i = 0; i < traceImages.length; i++) {
+    let traceImg = traceImages[i];
+    let alpha = map(i, 0, traceImages.length, 70, 25);
+    tint(255, 0, 0, alpha);
+    image(camImg, traceImg.x - traceImg.size / 2, traceImg.y - traceImg.size / 2, traceImg.size, traceImg.size);
+  }
+}
